@@ -14,6 +14,9 @@
 #pragma once
 
 #include <string>
+#include <ios>
+#include <cwchar>
+#include <cstring>
 
 #include <sql.h>
 #include <sqlext.h>

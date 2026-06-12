@@ -13,6 +13,7 @@
 
 #include "convert.h"
 
+#include <cctype>
 #include <cerrno>
 #include <cmath>
 #include <cstdlib>

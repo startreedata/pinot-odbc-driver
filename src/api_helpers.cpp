@@ -13,6 +13,7 @@
 
 #include "api_helpers.h"
 
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
