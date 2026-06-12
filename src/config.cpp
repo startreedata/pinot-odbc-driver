@@ -18,8 +18,10 @@
 #include <cstdlib>
 #include <cstring>
 
-#ifdef HAVE_ODBCINST
+#ifdef _WIN32
 #include <odbcinst.h>
+#else
+#include <dlfcn.h>
 #endif
 
 namespace pinot_odbc {
@@ -83,8 +85,54 @@ std::map<std::string, std::string> parseConnectionString(const std::string& in) 
   return kv;
 }
 
+namespace {
+
+#ifndef _WIN32
+// SQLGetPrivateProfileString lives in the driver manager's installer library
+// (libodbcinst for unixODBC, libiodbcinst for iODBC). Resolve it at runtime
+// instead of link time: the driver manager that loaded this driver almost
+// always has it in the process already, and avoiding the link dependency
+// lets one binary serve both driver managers (and makes a universal macOS
+// build possible, since Homebrew ships single-arch libodbcinst).
+using GetPrivateProfileStringFn = int (*)(const char* section, const char* entry,
+                                          const char* dflt, char* buffer, int bufferSize,
+                                          const char* filename);
+
+GetPrivateProfileStringFn loadGetPrivateProfileString() {
+  void* sym = dlsym(RTLD_DEFAULT, "SQLGetPrivateProfileString");
+  if (sym == nullptr) {
+    static const char* const kCandidates[] = {
+        "libodbcinst.so.2",    "libodbcinst.so.1",  "libodbcinst.so",
+        "libodbcinst.2.dylib", "libodbcinst.dylib", "libiodbcinst.2.dylib",
+        "libiodbcinst.dylib"};
+    for (const char* lib : kCandidates) {
+      void* handle = dlopen(lib, RTLD_LAZY | RTLD_GLOBAL);
+      if (handle != nullptr) {
+        sym = dlsym(handle, "SQLGetPrivateProfileString");
+        if (sym != nullptr) break;
+        dlclose(handle);
+      }
+    }
+  }
+  return reinterpret_cast<GetPrivateProfileStringFn>(sym);
+}
+
+int getPrivateProfileString(const char* section, const char* entry, const char* dflt,
+                            char* buffer, int bufferSize, const char* filename) {
+  static GetPrivateProfileStringFn fn = loadGetPrivateProfileString();
+  if (fn == nullptr) return 0;
+  return fn(section, entry, dflt, buffer, bufferSize, filename);
+}
+#else
+int getPrivateProfileString(const char* section, const char* entry, const char* dflt,
+                            char* buffer, int bufferSize, const char* filename) {
+  return SQLGetPrivateProfileString(section, entry, dflt, buffer, bufferSize, filename);
+}
+#endif
+
+}  // namespace
+
 void mergeDsnProfile(std::map<std::string, std::string>& kv) {
-#ifdef HAVE_ODBCINST
   auto it = kv.find("DSN");
   if (it == kv.end() || it->second.empty()) return;
   const std::string& dsn = it->second;
@@ -97,14 +145,11 @@ void mergeDsnProfile(std::map<std::string, std::string>& kv) {
   for (const char* key : kKeys) {
     if (kv.count(key)) continue;
     buf[0] = '\0';
-    int len = SQLGetPrivateProfileString(dsn.c_str(), key, "", buf, sizeof(buf), "odbc.ini");
+    int len = getPrivateProfileString(dsn.c_str(), key, "", buf, sizeof(buf), "odbc.ini");
     if (len > 0 && buf[0] != '\0') {
       kv[key] = std::string(buf, static_cast<size_t>(len));
     }
   }
-#else
-  (void)kv;
-#endif
 }
 
 namespace {

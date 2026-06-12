@@ -41,17 +41,14 @@ if(NOT WIN32)
       "'brew install unixodbc' on macOS or 'apt-get install unixodbc-dev' on Debian/Ubuntu.")
   endif()
 
-  # libodbcinst provides SQLGetPrivateProfileString for reading DSN entries
-  # from odbc.ini. Optional: without it, only full connection strings work.
-  find_library(ODBCINST_LIBRARY NAMES odbcinst
-    HINTS
-      /opt/homebrew/lib
-      /usr/local/lib
-      /usr/local/opt/unixodbc/lib)
+  # SQLGetPrivateProfileString (DSN lookup) is resolved at runtime via
+  # dlsym/dlopen from the driver manager's installer library, so there is no
+  # link-time odbcinst dependency on POSIX.
 else()
   # On Windows, SQLGetPrivateProfileString (registry-backed DSNs) lives in
-  # odbccp32 from the Windows SDK.
-  set(ODBCINST_LIBRARY odbccp32)
+  # odbccp32 from the Windows SDK. Its static dllload.obj references
+  # _vsnwprintf_s, which the UCRT provides via legacy_stdio_definitions.
+  set(ODBCINST_LIBRARY odbccp32 legacy_stdio_definitions)
 endif()
 
 set(PINOT_ODBC_CORE_SOURCES
@@ -76,10 +73,7 @@ target_include_directories(pinot_odbc_core PUBLIC
 if(ODBC_INCLUDE_DIR)
   target_include_directories(pinot_odbc_core PUBLIC ${ODBC_INCLUDE_DIR})
 endif()
-target_link_libraries(pinot_odbc_core PUBLIC CURL::libcurl)
-if(ODBCINST_LIBRARY)
-  target_compile_definitions(pinot_odbc_core PRIVATE HAVE_ODBCINST=1)
-endif()
+target_link_libraries(pinot_odbc_core PUBLIC CURL::libcurl ${CMAKE_DL_LIBS})
 if(MSVC)
   # /utf-8: sources contain UTF-8 string literals (unit tests).
   # /FI win_compat.h: windows.h must be included before sql.h everywhere.
@@ -89,17 +83,49 @@ if(MSVC)
 endif()
 
 add_library(pinot_odbc SHARED $<TARGET_OBJECTS:pinot_odbc_core>)
-target_link_libraries(pinot_odbc PRIVATE CURL::libcurl)
-if(ODBCINST_LIBRARY)
-  target_link_libraries(pinot_odbc PRIVATE ${ODBCINST_LIBRARY})
-endif()
+target_link_libraries(pinot_odbc PRIVATE CURL::libcurl ${CMAKE_DL_LIBS})
 if(WIN32)
-  # Export the ODBC entry points from the DLL.
+  # Export the ODBC entry points from the DLL; odbccp32 provides
+  # SQLGetPrivateProfileString (registry-backed DSNs).
   target_sources(pinot_odbc PRIVATE src/pinot_odbc.def)
+  target_link_libraries(pinot_odbc PRIVATE ${ODBCINST_LIBRARY})
 endif()
 set_target_properties(pinot_odbc PROPERTIES OUTPUT_NAME "pinot_odbc")
 
-install(TARGETS pinot_odbc LIBRARY DESTINATION lib)
+# ---- installation & packaging -------------------------------------------------
+
+include(GNUInstallDirs)
+install(TARGETS pinot_odbc
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES LICENSE README.md
+  DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/doc/pinot-odbc-driver)
+install(FILES
+  examples/odbcinst.ini.sample
+  examples/odbc.ini.sample
+  examples/pyodbc_example.py
+  DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/doc/pinot-odbc-driver/examples)
+
+set(CPACK_PACKAGE_NAME "pinot-odbc-driver")
+if(PINOT_ODBC_PACKAGE_VERSION)
+  set(CPACK_PACKAGE_VERSION ${PINOT_ODBC_PACKAGE_VERSION})
+else()
+  set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+endif()
+set(CPACK_PACKAGE_VENDOR "StarTree Inc.")
+set(CPACK_PACKAGE_CONTACT "StarTree Inc. <support@startree.ai>")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "ODBC driver for Apache Pinot")
+set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/startreedata/pinot-odbc-driver")
+set(CPACK_RESOURCE_FILE_LICENSE ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE)
+set(CPACK_STRIP_FILES TRUE)
+set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+set(CPACK_DEBIAN_PACKAGE_SECTION "database")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libcurl4 | libcurl4t64")
+set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "unixodbc")
+set(CPACK_RPM_FILE_NAME RPM-DEFAULT)
+set(CPACK_RPM_PACKAGE_LICENSE "StarTree Community License")
+set(CPACK_RPM_PACKAGE_GROUP "Applications/Databases")
+include(CPack)
 
 if(PINOT_ODBC_BUILD_TESTS)
   enable_testing()

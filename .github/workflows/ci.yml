@@ -55,11 +55,15 @@ jobs:
       - uses: actions/checkout@v4
 
       # libcurl comes from vcpkg (manifest mode via vcpkg.json); the ODBC SDK
-      # and odbccp32 come from the Windows SDK on the runner.
+      # and odbccp32 come from the Windows SDK on the runner. Static curl
+      # (x64-windows-static-md) matches the release build: a driver DLL must
+      # be self-contained because dependent DLLs next to it are not on the
+      # host application's loader search path.
       - name: Configure
         run: >
           cmake -S . -B build
           -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DVCPKG_TARGET_TRIPLET=x64-windows-static-md
 
       - name: Build (Release)
         run: cmake --build build --config Release --parallel

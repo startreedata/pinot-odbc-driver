@@ -1,0 +1,190 @@
+# Copyright 2026 StarTree Inc.
+#
+# Licensed under the StarTree Community License (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy
+# of the License at http://www.startree.ai/startree-community-license
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OF ANY KIND, either express or implied. See the License for the
+# specific language governing permissions and limitations under the License.
+
+# Builds release artifacts for all mainstream platforms and publishes a
+# GitHub Release when a v* tag is pushed:
+#   - Linux x86_64 / arm64: .tar.gz, .deb (Debian/Ubuntu), .rpm (RHEL/Fedora)
+#     built on Ubuntu 22.04 for broad glibc compatibility
+#   - macOS: universal (arm64 + x86_64) .tar.gz
+#   - Windows x64: self-contained DLL (static libcurl) + install script .zip
+# workflow_dispatch builds the same artifacts without publishing a release.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  version:
+    name: Determine version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - id: ver
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=0.0.0" >> "$GITHUB_OUTPUT"
+          fi
+
+  linux:
+    name: Linux ${{ matrix.arch }} (.tar.gz, .deb, .rpm)
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+          - arch: arm64
+            platform: linux/arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        if: matrix.arch != 'amd64'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build, test, and package (Ubuntu 22.04 container)
+        run: |
+          docker run --rm --platform ${{ matrix.platform }} -v "$PWD":/src -w /src \
+            ubuntu:22.04 bash -ec '
+              apt-get update -qq
+              DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+                g++ cmake make unixodbc-dev libcurl4-openssl-dev rpm file >/dev/null
+              cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+                -DPINOT_ODBC_PACKAGE_VERSION=${{ needs.version.outputs.version }}
+              cmake --build build -j"$(nproc)"
+              ctest --test-dir build --output-on-failure
+              cd build && cpack -G "TGZ;DEB;RPM"
+              ls -la *.tar.gz *.deb *.rpm
+            '
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p dist
+          cp build/*.deb build/*.rpm dist/
+          cp build/pinot-odbc-driver-*.tar.gz \
+            "dist/pinot-odbc-driver-${{ needs.version.outputs.version }}-linux-${{ matrix.arch }}.tar.gz"
+          ls -la dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: dist/*
+
+  macos:
+    name: macOS universal (.tar.gz)
+    needs: version
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: brew install unixodbc  # headers only; not linked
+
+      - name: Build & test (universal binary)
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            "-DCMAKE_OSX_ARCHITECTURES=x86_64;arm64" \
+            -DPINOT_ODBC_PACKAGE_VERSION=${{ needs.version.outputs.version }}
+          cmake --build build -j3
+          ctest --test-dir build --output-on-failure
+          lipo -info build/libpinot_odbc.dylib
+          lipo -info build/libpinot_odbc.dylib | grep -q x86_64
+          lipo -info build/libpinot_odbc.dylib | grep -q arm64
+
+      - name: Package
+        run: |
+          cd build && cpack -G TGZ
+          mkdir -p ../dist
+          cp pinot-odbc-driver-*.tar.gz \
+            "../dist/pinot-odbc-driver-${{ needs.version.outputs.version }}-macos-universal.tar.gz"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-universal
+          path: dist/*
+
+  windows:
+    name: Windows x64 (.zip)
+    needs: version
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      # Static curl (x64-windows-static-md) so the driver is one
+      # self-contained DLL: dependent DLLs next to a driver DLL are not on
+      # the loader search path of the host application (Excel, Power BI...).
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DVCPKG_TARGET_TRIPLET=x64-windows-static-md
+          -DPINOT_ODBC_PACKAGE_VERSION=${{ needs.version.outputs.version }}
+
+      - name: Build & test
+        run: |
+          cmake --build build --config Release --parallel
+          ctest --test-dir build -C Release --output-on-failure
+
+      - name: Package
+        run: |
+          New-Item -ItemType Directory -Path stage | Out-Null
+          Copy-Item build\Release\pinot_odbc.dll stage\
+          Copy-Item examples\install_windows.ps1 stage\
+          Copy-Item LICENSE stage\
+          Copy-Item README.md stage\
+          New-Item -ItemType Directory -Path dist | Out-Null
+          Compress-Archive -Path stage\* -DestinationPath `
+            "dist\pinot-odbc-driver-${{ needs.version.outputs.version }}-windows-x64.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: dist/*
+
+  release:
+    name: Publish GitHub release
+    needs: [version, linux, macos, windows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "Pinot ODBC Driver ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            dist/*

@@ -52,6 +52,26 @@ unixODBC/iODBC) can query Pinot.
 `TIMESTAMP` values are accepted both as `yyyy-MM-dd HH:mm:ss[.fff]` strings
 and as epoch milliseconds.
 
+## Releases
+
+Tagging `v*` runs the [release workflow](.github/workflows/release.yml), which
+builds, tests, and publishes a GitHub Release with artifacts for the
+mainstream platforms (plus a `SHA256SUMS` file):
+
+| Platform | Artifacts |
+|----------|-----------|
+| Linux x86_64 / arm64 | `.deb` (Debian/Ubuntu), `.rpm` (RHEL/Fedora), `.tar.gz` — built on Ubuntu 22.04 for broad glibc compatibility |
+| macOS (universal: Apple Silicon + Intel) | `.tar.gz` |
+| Windows x64 | `.zip` with a self-contained `pinot_odbc.dll` (static libcurl) and `install_windows.ps1` |
+
+```sh
+# Debian/Ubuntu
+sudo apt install ./pinot-odbc-driver_<version>_amd64.deb
+# RHEL/Fedora
+sudo rpm -i pinot-odbc-driver-<version>-1.x86_64.rpm
+# The driver lands in /usr/lib/libpinot_odbc.so; register it in odbcinst.ini.
+```
+
 ## Building
 
 Requirements: a C++17 compiler, CMake ≥ 3.16, libcurl (system), and the
