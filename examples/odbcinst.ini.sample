@@ -1,0 +1,6 @@
+# Driver registration. Append to the odbcinst.ini reported by `odbcinst -j`,
+# or install with:  odbcinst -i -d -f examples/odbcinst.ini.sample
+[PinotODBC]
+Description = Apache Pinot ODBC Driver
+Driver      = /usr/local/lib/libpinot_odbc.dylib
+Threading   = 2

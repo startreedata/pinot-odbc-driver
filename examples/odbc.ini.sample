@@ -1,0 +1,19 @@
+# Sample DSN. Append to the odbc.ini reported by `odbcinst -j`,
+# or install with:  odbcinst -i -s -l -f examples/odbc.ini.sample
+[Pinot]
+Driver     = PinotODBC
+Host       = localhost
+Port       = 8099
+Scheme     = http
+Controller = localhost:9000
+# Authentication (pick one):
+# UID   = user
+# PWD   = password
+# TOKEN = my-bearer-token
+# Optional:
+# DATABASE         = mydb
+# USEMULTISTAGE    = 1
+# QUERYOPTIONS     = timeoutMs=30000
+# TIMEOUT          = 60
+# SSLVERIFY        = 1
+# STRINGCOLUMNSIZE = 4096
