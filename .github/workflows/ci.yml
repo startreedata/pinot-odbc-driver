@@ -26,7 +26,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
@@ -52,7 +52,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # libcurl comes from vcpkg (manifest mode via vcpkg.json); the ODBC SDK
       # and odbccp32 come from the Windows SDK on the runner. Static curl
@@ -72,7 +72,7 @@ jobs:
         run: ctest --test-dir build -C Release --output-on-failure
 
       - name: Upload driver DLL
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pinot_odbc-windows-x64
           path: build/Release/pinot_odbc.dll
@@ -82,7 +82,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install dependencies
         run: |
