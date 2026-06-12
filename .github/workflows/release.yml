@@ -53,11 +53,11 @@ jobs:
           - arch: arm64
             platform: linux/arm64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up QEMU
         if: matrix.arch != 'amd64'
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Build, test, and package (Ubuntu 22.04 container)
         run: |
@@ -82,7 +82,7 @@ jobs:
             "dist/pinot-odbc-driver-${{ needs.version.outputs.version }}-linux-${{ matrix.arch }}.tar.gz"
           ls -la dist/
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux-${{ matrix.arch }}
           path: dist/*
@@ -93,7 +93,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install dependencies
         run: brew install unixodbc  # headers only; not linked
@@ -116,7 +116,7 @@ jobs:
           cp pinot-odbc-driver-*.tar.gz \
             "../dist/pinot-odbc-driver-${{ needs.version.outputs.version }}-macos-universal.tar.gz"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: macos-universal
           path: dist/*
@@ -127,7 +127,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Static curl (x64-windows-static-md) so the driver is one
       # self-contained DLL: dependent DLLs next to a driver DLL are not on
@@ -155,7 +155,7 @@ jobs:
           Compress-Archive -Path stage\* -DestinationPath `
             "dist\pinot-odbc-driver-${{ needs.version.outputs.version }}-windows-x64.zip"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-x64
           path: dist/*
@@ -168,7 +168,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
