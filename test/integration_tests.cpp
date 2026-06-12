@@ -606,8 +606,10 @@ void testConnectionRefused() {
   // Nothing listens on this port (reserved/unlikely).
   SQLRETURN rc = s.connect("HOST=127.0.0.1;PORT=1;TIMEOUT=2");
   CHECK_EQ(rc, SQL_ERROR);
+  // POSIX loopback refuses immediately (08001/08S01); Windows may silently
+  // drop instead, surfacing as a connect timeout (HYT00). Both are valid.
   std::string diag = diagText(SQL_HANDLE_DBC, s.dbc);
-  CHECK(diag.find("08") == 0);  // 08001/08S01 connection-class SQLSTATE
+  CHECK(diag.find("08") == 0 || diag.find("HYT") == 0);
 }
 
 }  // namespace
