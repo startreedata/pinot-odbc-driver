@@ -1,0 +1,92 @@
+; Copyright 2026 StarTree Inc.
+;
+; Licensed under the StarTree Community License (the "License"); you may not
+; use this file except in compliance with the License. You may obtain a copy
+; of the License at http://www.startree.ai/startree-community-license
+;
+; Module-definition file for the Windows build: exports every ODBC entry
+; point implemented by the driver.
+
+LIBRARY pinot_odbc
+EXPORTS
+    SQLAllocHandle
+    SQLBindCol
+    SQLBindParameter
+    SQLBrowseConnect
+    SQLBrowseConnectW
+    SQLBulkOperations
+    SQLCancel
+    SQLCloseCursor
+    SQLColAttribute
+    SQLColAttributeW
+    SQLColumnPrivileges
+    SQLColumnPrivilegesW
+    SQLColumns
+    SQLColumnsW
+    SQLConnect
+    SQLConnectW
+    SQLDescribeCol
+    SQLDescribeColW
+    SQLDescribeParam
+    SQLDisconnect
+    SQLDriverConnect
+    SQLDriverConnectW
+    SQLEndTran
+    SQLExecDirect
+    SQLExecDirectW
+    SQLExecute
+    SQLFetch
+    SQLFetchScroll
+    SQLForeignKeys
+    SQLForeignKeysW
+    SQLFreeHandle
+    SQLFreeStmt
+    SQLGetConnectAttr
+    SQLGetConnectAttrW
+    SQLGetCursorName
+    SQLGetCursorNameW
+    SQLGetData
+    SQLGetDiagField
+    SQLGetDiagFieldW
+    SQLGetDiagRec
+    SQLGetDiagRecW
+    SQLGetEnvAttr
+    SQLGetFunctions
+    SQLGetInfo
+    SQLGetInfoW
+    SQLGetStmtAttr
+    SQLGetStmtAttrW
+    SQLGetTypeInfo
+    SQLGetTypeInfoW
+    SQLMoreResults
+    SQLNativeSql
+    SQLNativeSqlW
+    SQLNumParams
+    SQLNumResultCols
+    SQLParamData
+    SQLPrepare
+    SQLPrepareW
+    SQLPrimaryKeys
+    SQLPrimaryKeysW
+    SQLProcedureColumns
+    SQLProcedureColumnsW
+    SQLProcedures
+    SQLProceduresW
+    SQLPutData
+    SQLRowCount
+    SQLSetConnectAttr
+    SQLSetConnectAttrW
+    SQLSetCursorName
+    SQLSetCursorNameW
+    SQLSetEnvAttr
+    SQLSetPos
+    SQLSetStmtAttr
+    SQLSetStmtAttrW
+    SQLSpecialColumns
+    SQLSpecialColumnsW
+    SQLStatistics
+    SQLStatisticsW
+    SQLTablePrivileges
+    SQLTablePrivilegesW
+    SQLTables
+    SQLTablesW

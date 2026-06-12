@@ -85,6 +85,16 @@ SQLRETURN SQL_API SQLConnectW(SQLHDBC ConnectionHandle, SQLWCHAR* ServerName,
                     pwd.len());
 }
 
+SQLRETURN SQL_API SQLBrowseConnectW(SQLHDBC ConnectionHandle, SQLWCHAR* InConnectionString,
+                                    SQLSMALLINT StringLength1, SQLWCHAR* OutConnectionString,
+                                    SQLSMALLINT BufferLength, SQLSMALLINT* StringLength2Ptr) {
+  (void)OutConnectionString;
+  (void)BufferLength;
+  (void)StringLength2Ptr;
+  Utf8Arg in(InConnectionString, StringLength1);
+  return SQLBrowseConnect(ConnectionHandle, in.ptr(), in.len(), nullptr, 0, nullptr);
+}
+
 SQLRETURN SQL_API SQLExecDirectW(SQLHSTMT StatementHandle, SQLWCHAR* StatementText,
                                  SQLINTEGER TextLength) {
   Utf8Arg sql(StatementText, TextLength);

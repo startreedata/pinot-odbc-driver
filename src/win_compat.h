@@ -11,30 +11,18 @@
  * specific language governing permissions and limitations under the License.
  */
 
-// Standalone mock Pinot broker/controller for manual testing (e.g. isql).
-// Prints the chosen port on stdout and serves until killed.
+// Force-included (/FI) ahead of every translation unit on MSVC builds:
+// windows.h must precede sql.h, and its min/max macros must be suppressed
+// before any standard headers are seen.
+#pragma once
 
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <winsock2.h>
 #include <windows.h>
-#else
-#include <unistd.h>
 #endif
-
-#include <cstdio>
-
-#include "mock_broker.h"
-
-int main() {
-  MockBroker broker;
-  std::printf("%d\n", broker.port());
-  std::fflush(stdout);
-#ifdef _WIN32
-  for (;;) Sleep(60000);
-#else
-  for (;;) pause();
-#endif
-  return 0;
-}

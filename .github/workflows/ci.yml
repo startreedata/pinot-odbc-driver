@@ -47,6 +47,32 @@ jobs:
       - name: Run tests (mock broker)
         run: ctest --test-dir build --output-on-failure
 
+  windows-build-test:
+    name: Unit & integration tests (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      # libcurl comes from vcpkg (manifest mode via vcpkg.json); the ODBC SDK
+      # and odbccp32 come from the Windows SDK on the runner.
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+
+      - name: Build (Release)
+        run: cmake --build build --config Release --parallel
+
+      - name: Run tests (mock broker)
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Upload driver DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: pinot_odbc-windows-x64
+          path: build/Release/pinot_odbc.dll
+
   live-integration:
     name: Live integration tests (Pinot quickstart in Docker)
     runs-on: ubuntu-latest

@@ -18,6 +18,12 @@
 #include <string>
 #include <thread>
 
+#ifdef _WIN32
+using MockSocket = unsigned long long;  // SOCKET
+#else
+using MockSocket = int;
+#endif
+
 // A minimal in-process HTTP server that mimics the Pinot broker
 // (POST /query/sql, GET /health) and controller (GET /tables,
 // GET /tables/{name}/schema) endpoints for integration tests.
@@ -38,7 +44,7 @@ class MockBroker {
   std::string handle(const std::string& method, const std::string& path,
                      const std::string& authHeader, const std::string& body, int* status);
 
-  int listenFd_ = -1;
+  MockSocket listenFd_ = static_cast<MockSocket>(-1);
   int port_ = 0;
   bool requireAuth_ = false;
   std::atomic<bool> stop_{false};

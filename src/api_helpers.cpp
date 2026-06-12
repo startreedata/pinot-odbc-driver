@@ -111,7 +111,11 @@ void timestampFromEpochMillis(long long ms, SQL_TIMESTAMP_STRUCT& ts) {
     secs -= 1;
   }
   struct tm tmv;
+#ifdef _WIN32
+  gmtime_s(&tmv, &secs);
+#else
   gmtime_r(&secs, &tmv);
+#endif
   ts.year = static_cast<SQLSMALLINT>(tmv.tm_year + 1900);
   ts.month = static_cast<SQLUSMALLINT>(tmv.tm_mon + 1);
   ts.day = static_cast<SQLUSMALLINT>(tmv.tm_mday);

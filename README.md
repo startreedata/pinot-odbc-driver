@@ -68,6 +68,31 @@ cmake --build build
 # -> build/libpinot_odbc.dylib (macOS) / build/libpinot_odbc.so (Linux)
 ```
 
+### Windows
+
+Requirements: Visual Studio 2019+ (or Build Tools) and [vcpkg](https://vcpkg.io)
+for libcurl; the ODBC SDK ships with the Windows SDK.
+
+```powershell
+cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake"
+cmake --build build --config Release
+# -> build\Release\pinot_odbc.dll
+ctest --test-dir build -C Release --output-on-failure
+```
+
+Register the driver (elevated PowerShell), then connect from any ODBC app
+(Excel, Power BI Import mode, pyodbc, ...):
+
+```powershell
+.\examples\install_windows.ps1 -DriverPath C:\path\to\pinot_odbc.dll
+# Connection string:
+#   DRIVER={StarTree Pinot ODBC Driver};HOST=broker;PORT=8099;CONTROLLER=controller:9000
+# DSNs can be created in the ODBC Data Source Administrator (odbcad32.exe).
+```
+
+CI builds the DLL on every PR and uploads it as the `pinot_odbc-windows-x64`
+artifact.
+
 Run the test suite (no Pinot cluster needed; an in-process mock broker is
 used):
 

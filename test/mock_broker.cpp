@@ -13,14 +13,23 @@
 
 #include "mock_broker.h"
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#endif
 
 #include <cctype>
 #include <cstring>
+#include <mutex>
 #include <stdexcept>
 
 #include "json.hpp"
@@ -28,6 +37,44 @@
 using nlohmann::json;
 
 namespace {
+
+constexpr MockSocket kInvalidSocket = static_cast<MockSocket>(-1);
+
+#ifdef _WIN32
+void ensureSocketsInitialized() {
+  static std::once_flag flag;
+  std::call_once(flag, []() {
+    WSADATA wsaData;
+    WSAStartup(MAKEWORD(2, 2), &wsaData);
+  });
+}
+void closeSocket(MockSocket fd) { closesocket(static_cast<SOCKET>(fd)); }
+void shutdownSocket(MockSocket fd) { shutdown(static_cast<SOCKET>(fd), SD_BOTH); }
+int pollReadable(MockSocket fd, int timeoutMs) {
+  WSAPOLLFD pfd{static_cast<SOCKET>(fd), POLLIN, 0};
+  return WSAPoll(&pfd, 1, timeoutMs);
+}
+int recvSome(MockSocket fd, char* buf, int len) {
+  return ::recv(static_cast<SOCKET>(fd), buf, len, 0);
+}
+void sendAll(MockSocket fd, const char* data, size_t len) {
+  ::send(static_cast<SOCKET>(fd), data, static_cast<int>(len), 0);
+}
+#else
+void ensureSocketsInitialized() {}
+void closeSocket(MockSocket fd) { ::close(fd); }
+void shutdownSocket(MockSocket fd) { ::shutdown(fd, SHUT_RDWR); }
+int pollReadable(MockSocket fd, int timeoutMs) {
+  pollfd pfd{fd, POLLIN, 0};
+  return ::poll(&pfd, 1, timeoutMs);
+}
+int recvSome(MockSocket fd, char* buf, int len) {
+  return static_cast<int>(::recv(fd, buf, static_cast<size_t>(len), 0));
+}
+void sendAll(MockSocket fd, const char* data, size_t len) {
+  ::send(fd, data, len, 0);
+}
+#endif
 
 json fullResultResponse() {
   json resp;
@@ -103,30 +150,33 @@ json airlineSchema() {
 }  // namespace
 
 MockBroker::MockBroker(bool requireAuth) : requireAuth_(requireAuth) {
-  listenFd_ = ::socket(AF_INET, SOCK_STREAM, 0);
-  if (listenFd_ < 0) throw std::runtime_error("socket() failed");
+  ensureSocketsInitialized();
+  listenFd_ = static_cast<MockSocket>(::socket(AF_INET, SOCK_STREAM, 0));
+  if (listenFd_ == kInvalidSocket) throw std::runtime_error("socket() failed");
   int one = 1;
-  setsockopt(listenFd_, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+  setsockopt(static_cast<decltype(::socket(0, 0, 0))>(listenFd_), SOL_SOCKET, SO_REUSEADDR,
+             reinterpret_cast<const char*>(&one), sizeof(one));
   sockaddr_in addr;
   std::memset(&addr, 0, sizeof(addr));
   addr.sin_family = AF_INET;
   addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
   addr.sin_port = 0;  // ephemeral
-  if (bind(listenFd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+  auto fd = static_cast<decltype(::socket(0, 0, 0))>(listenFd_);
+  if (bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
     throw std::runtime_error("bind() failed");
   }
   socklen_t len = sizeof(addr);
-  getsockname(listenFd_, reinterpret_cast<sockaddr*>(&addr), &len);
+  getsockname(fd, reinterpret_cast<sockaddr*>(&addr), &len);
   port_ = ntohs(addr.sin_port);
-  if (listen(listenFd_, 16) != 0) throw std::runtime_error("listen() failed");
+  if (listen(fd, 16) != 0) throw std::runtime_error("listen() failed");
   thread_ = std::thread([this]() { run(); });
 }
 
 MockBroker::~MockBroker() {
   stop_ = true;
-  if (listenFd_ >= 0) {
-    ::shutdown(listenFd_, SHUT_RDWR);
-    ::close(listenFd_);
+  if (listenFd_ != kInvalidSocket) {
+    shutdownSocket(listenFd_);
+    closeSocket(listenFd_);
   }
   if (thread_.joinable()) thread_.join();
 }
@@ -138,23 +188,23 @@ std::string MockBroker::lastQueryOptions() const {
 
 void MockBroker::run() {
   while (!stop_) {
-    pollfd pfd{listenFd_, POLLIN, 0};
-    int rc = ::poll(&pfd, 1, 100);
+    int rc = pollReadable(listenFd_, 100);
     if (rc <= 0) continue;
-    int client = ::accept(listenFd_, nullptr, nullptr);
-    if (client < 0) continue;
+    MockSocket client = static_cast<MockSocket>(
+        ::accept(static_cast<decltype(::socket(0, 0, 0))>(listenFd_), nullptr, nullptr));
+    if (client == kInvalidSocket) continue;
 
     std::string request;
     char buf[4096];
     size_t headerEnd = std::string::npos;
     while (headerEnd == std::string::npos) {
-      ssize_t n = ::recv(client, buf, sizeof(buf), 0);
+      int n = recvSome(client, buf, sizeof(buf));
       if (n <= 0) break;
       request.append(buf, static_cast<size_t>(n));
       headerEnd = request.find("\r\n\r\n");
     }
     if (headerEnd == std::string::npos) {
-      ::close(client);
+      closeSocket(client);
       continue;
     }
 
@@ -189,7 +239,7 @@ void MockBroker::run() {
     if (!cl.empty()) contentLength = static_cast<size_t>(std::stoul(cl));
     std::string body = request.substr(headerEnd + 4);
     while (body.size() < contentLength) {
-      ssize_t n = ::recv(client, buf, sizeof(buf), 0);
+      int n = recvSome(client, buf, sizeof(buf));
       if (n <= 0) break;
       body.append(buf, static_cast<size_t>(n));
     }
@@ -211,8 +261,8 @@ void MockBroker::run() {
                            "\r\nContent-Type: application/json\r\nContent-Length: " +
                            std::to_string(responseBody.size()) + "\r\nConnection: close\r\n\r\n" +
                            responseBody;
-    ::send(client, response.data(), response.size(), 0);
-    ::close(client);
+    sendAll(client, response.data(), response.size());
+    closeSocket(client);
   }
 }
 

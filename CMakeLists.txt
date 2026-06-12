@@ -25,27 +25,34 @@ option(PINOT_ODBC_DOCKER_TESTS
 
 find_package(CURL REQUIRED)
 
-# ODBC SDK headers (unixODBC or iODBC). We only need sql.h/sqlext.h/sqlucode.h;
-# the driver manager links against us, not the other way around.
-find_path(ODBC_INCLUDE_DIR sql.h
-  HINTS
-    /opt/homebrew/include
-    /usr/local/include
-    /usr/local/opt/unixodbc/include
-    /usr/include)
-if(NOT ODBC_INCLUDE_DIR)
-  message(FATAL_ERROR
-    "ODBC SDK headers (sql.h) not found. Install unixODBC: "
-    "'brew install unixodbc' on macOS or 'apt-get install unixodbc-dev' on Debian/Ubuntu.")
-endif()
+# ODBC SDK headers (unixODBC or iODBC on POSIX; the Windows SDK provides
+# them on Windows). We only need sql.h/sqlext.h/sqlucode.h; the driver
+# manager links against us, not the other way around.
+if(NOT WIN32)
+  find_path(ODBC_INCLUDE_DIR sql.h
+    HINTS
+      /opt/homebrew/include
+      /usr/local/include
+      /usr/local/opt/unixodbc/include
+      /usr/include)
+  if(NOT ODBC_INCLUDE_DIR)
+    message(FATAL_ERROR
+      "ODBC SDK headers (sql.h) not found. Install unixODBC: "
+      "'brew install unixodbc' on macOS or 'apt-get install unixodbc-dev' on Debian/Ubuntu.")
+  endif()
 
-# libodbcinst provides SQLGetPrivateProfileString for reading DSN entries
-# from odbc.ini. Optional: without it, only full connection strings work.
-find_library(ODBCINST_LIBRARY NAMES odbcinst
-  HINTS
-    /opt/homebrew/lib
-    /usr/local/lib
-    /usr/local/opt/unixodbc/lib)
+  # libodbcinst provides SQLGetPrivateProfileString for reading DSN entries
+  # from odbc.ini. Optional: without it, only full connection strings work.
+  find_library(ODBCINST_LIBRARY NAMES odbcinst
+    HINTS
+      /opt/homebrew/lib
+      /usr/local/lib
+      /usr/local/opt/unixodbc/lib)
+else()
+  # On Windows, SQLGetPrivateProfileString (registry-backed DSNs) lives in
+  # odbccp32 from the Windows SDK.
+  set(ODBCINST_LIBRARY odbccp32)
+endif()
 
 set(PINOT_ODBC_CORE_SOURCES
   src/config.cpp
@@ -64,18 +71,31 @@ set(PINOT_ODBC_CORE_SOURCES
 add_library(pinot_odbc_core OBJECT ${PINOT_ODBC_CORE_SOURCES})
 set_target_properties(pinot_odbc_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(pinot_odbc_core PUBLIC
-  ${ODBC_INCLUDE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/third_party
   ${CMAKE_CURRENT_SOURCE_DIR}/src)
+if(ODBC_INCLUDE_DIR)
+  target_include_directories(pinot_odbc_core PUBLIC ${ODBC_INCLUDE_DIR})
+endif()
 target_link_libraries(pinot_odbc_core PUBLIC CURL::libcurl)
 if(ODBCINST_LIBRARY)
   target_compile_definitions(pinot_odbc_core PRIVATE HAVE_ODBCINST=1)
+endif()
+if(MSVC)
+  # /utf-8: sources contain UTF-8 string literals (unit tests).
+  # /FI win_compat.h: windows.h must be included before sql.h everywhere.
+  # PUBLIC so test targets that compile against the driver headers inherit it.
+  target_compile_options(pinot_odbc_core PUBLIC
+    /utf-8 "/FI${CMAKE_CURRENT_SOURCE_DIR}/src/win_compat.h")
 endif()
 
 add_library(pinot_odbc SHARED $<TARGET_OBJECTS:pinot_odbc_core>)
 target_link_libraries(pinot_odbc PRIVATE CURL::libcurl)
 if(ODBCINST_LIBRARY)
   target_link_libraries(pinot_odbc PRIVATE ${ODBCINST_LIBRARY})
+endif()
+if(WIN32)
+  # Export the ODBC entry points from the DLL.
+  target_sources(pinot_odbc PRIVATE src/pinot_odbc.def)
 endif()
 set_target_properties(pinot_odbc PROPERTIES OUTPUT_NAME "pinot_odbc")
 
@@ -96,12 +116,18 @@ if(PINOT_ODBC_BUILD_TESTS)
   if(ODBCINST_LIBRARY)
     target_link_libraries(integration_tests PRIVATE ${ODBCINST_LIBRARY})
   endif()
+  if(WIN32)
+    target_link_libraries(integration_tests PRIVATE ws2_32)
+  endif()
   add_test(NAME integration_tests COMMAND integration_tests)
 
   # Standalone mock Pinot server for manual driver-manager testing (isql etc.).
   add_executable(mock_pinot_server test/mock_server_main.cpp test/mock_broker.cpp)
   target_include_directories(mock_pinot_server PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
+  if(WIN32)
+    target_link_libraries(mock_pinot_server PRIVATE ws2_32)
+  endif()
 
   # Live tests against a real Pinot cluster (batch quickstart). The binary is
   # always built; run it via test/run_docker_integration.sh, which starts the
