@@ -110,10 +110,13 @@ jobs:
           $mez = (Resolve-Path "powerbi-connector\bin\AnyCPU\Debug\PinotODBC.mez").Path
           Write-Host "PQTest: $pqtest"
 
-          # Anonymous credential for this connector + query.
-          $tmpl = & $pqtest credential-template --prettyPrint --extension $mez --queryFile $queryFile 2>&1 | Out-String
+          # Anonymous credential for this connector + query. The connector
+          # offers multiple auth kinds, so the kind must be named explicitly.
+          # Keep the template as clean stdout so it pipes to set-credential.
+          $tmpl = (& $pqtest credential-template --prettyPrint --extension $mez --queryFile $queryFile --authenticationKind Anonymous) -join "`n"
           Write-Host "::group::credential-template"; Write-Host $tmpl; Write-Host "::endgroup::"
-          $tmpl | & $pqtest set-credential --prettyPrint --extension $mez --queryFile $queryFile 2>&1 | Out-String | Write-Host
+          $setOut = $tmpl | & $pqtest set-credential --prettyPrint --extension $mez --queryFile $queryFile 2>&1 | Out-String
+          Write-Host "::group::set-credential"; Write-Host $setOut; Write-Host "::endgroup::"
 
           # Execute the connector end-to-end and assert it returns 3 rows.
           $out = & $pqtest run-test --prettyPrint --extension $mez --queryFile $queryFile 2>&1 | Out-String
