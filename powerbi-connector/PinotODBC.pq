@@ -120,10 +120,10 @@ shared PinotODBC.Database = (host as text, port as number, optional options as r
             else if Credential[AuthenticationKind]? = "Key" then
                 // Bearer token -> the driver prepends "Bearer " automatically.
                 [Token = Credential[Key]]
-            else if Credential[AuthenticationKind]? = "Anonymous" then
-                []
             else
-                error Error.Record("Error", "Unhandled authentication kind"),
+                // Anonymous (or no bound credential during analysis): the driver
+                // talks to the cluster without auth, so add nothing.
+                [],
         //
         // Capabilities derived from the configuration variables above.
         //
