@@ -52,6 +52,16 @@ unixODBC/iODBC) can query Pinot.
 `TIMESTAMP` values are accepted both as `yyyy-MM-dd HH:mm:ss[.fff]` strings
 and as epoch milliseconds.
 
+## Tutorials
+
+| Guide | Covers |
+|-------|--------|
+| [Power BI](docs/powerbi.md) | Import mode, DSN setup, auth, gateway refresh, troubleshooting |
+| [Excel](docs/excel.md) | Get Data → From ODBC, refreshable workbook tables |
+| [Tableau](docs/tableau.md) | Other Databases (ODBC), live vs. extract, Custom SQL |
+| [Python](docs/python.md) | pyodbc, parameterized queries, catalog APIs, pandas DataFrames |
+| [StarTree Cloud](docs/startree-cloud.md) | HTTPS + token connection strings and DSNs |
+
 ## Releases
 
 Tagging `v*` runs the [release workflow](.github/workflows/release.yml), which
