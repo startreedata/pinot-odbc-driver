@@ -1,0 +1,63 @@
+# Copyright 2026 StarTree Inc.
+#
+# Licensed under the StarTree Community License (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy
+# of the License at http://www.startree.ai/startree-community-license
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OF ANY KIND, either express or implied. See the License for the
+# specific language governing permissions and limitations under the License.
+
+# Builds and compile-validates the Power BI custom connector (.mez).
+name: Power BI connector
+
+on:
+  pull_request:
+    paths:
+      - 'powerbi-connector/**'
+      - '.github/workflows/powerbi-connector.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'powerbi-connector/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build & validate .mez
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      # The .mez is a ZIP of the .pq + .pqm + icons; MSBuild's ZipDirectory
+      # builds it cross-platform with no SDK dependency.
+      - name: Build .mez
+        run: dotnet msbuild powerbi-connector/PinotODBC.proj -t:BuildMez
+
+      # Compile-validate the M with the official Power Query SDK tools so
+      # connector syntax/type errors fail the build.
+      - name: Compile-validate (Power Query SDK)
+        shell: pwsh
+        run: |
+          nuget install Microsoft.PowerQuery.SdkTools -OutputDirectory "$env:RUNNER_TEMP\pqsdk" -ExcludeVersion
+          $makepqx = Get-ChildItem -Path "$env:RUNNER_TEMP\pqsdk" -Recurse -Filter MakePQX.exe |
+            Select-Object -First 1
+          if (-not $makepqx) { throw "MakePQX.exe not found in the SdkTools package" }
+          Write-Host "Using $($makepqx.FullName)"
+          Push-Location powerbi-connector
+          & $makepqx.FullName compile
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::group::MakePQX help"; & $makepqx.FullName --help; & $makepqx.FullName compile --help; Write-Host "::endgroup::"
+            throw "MakePQX compile failed with exit code $LASTEXITCODE"
+          }
+          Pop-Location
+
+      - name: Upload .mez
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: powerbi-connector-mez
+          path: powerbi-connector/bin/AnyCPU/Debug/PinotODBC.mez
+          if-no-files-found: warn

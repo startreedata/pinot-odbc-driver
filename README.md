@@ -57,6 +57,7 @@ and as epoch milliseconds.
 | Guide | Covers |
 |-------|--------|
 | [Power BI](docs/powerbi.md) | Import mode, DSN setup, auth, gateway refresh, troubleshooting |
+| [Power BI DirectQuery](docs/powerbi-directquery.md) | Live querying via the custom [`.mez` connector](powerbi-connector/) |
 | [Excel](docs/excel.md) | Get Data → From ODBC, refreshable workbook tables |
 | [Tableau](docs/tableau.md) | Other Databases (ODBC), live vs. extract, Custom SQL |
 | [Python](docs/python.md) | pyodbc, parameterized queries, catalog APIs, pandas DataFrames |

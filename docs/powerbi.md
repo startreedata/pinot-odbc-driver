@@ -4,6 +4,10 @@ This guide walks through connecting **Power BI Desktop** to Apache Pinot with
 the Pinot ODBC driver, using Power BI's built-in ODBC connector in **Import
 mode**.
 
+> **Want live queries (DirectQuery)?** The built-in ODBC connector is
+> Import-only. For DirectQuery, use the custom Apache Pinot connector — see
+> [powerbi-directquery.md](powerbi-directquery.md).
+
 ## Prerequisites
 
 - Windows with [Power BI Desktop](https://powerbi.microsoft.com/desktop/)
@@ -117,9 +121,9 @@ create the same DSN there if the report uses one.
 
 ## Limitations
 
-- **Import mode only.** Power BI does not support DirectQuery through the
-  generic ODBC connector; DirectQuery would require a custom Power BI
-  connector (`.mez`) wrapping this driver.
+- **Import mode only (this guide).** Power BI's *generic* ODBC connector does
+  not support DirectQuery. For live DirectQuery, use the custom Apache Pinot
+  connector instead — see [powerbi-directquery.md](powerbi-directquery.md).
 - The driver is read-only — Pinot is an analytical store; no DML/DDL.
 - ODBC escape sequences (`{ts '...'}`, `{fn ...}`) are passed through to
   Pinot verbatim; write plain Pinot SQL in the SQL statement box.
