@@ -134,7 +134,7 @@ propagation:
 test/run_docker_integration.sh
 ```
 
-Overrides: `PINOT_IMAGE` (default `apachepinot/pinot:1.3.0`), `BROKER_PORT`
+Overrides: `PINOT_IMAGE` (default `apachepinot/pinot:1.5.0`), `BROKER_PORT`
 (8000), `CONTROLLER_PORT` (9000), `READY_TIMEOUT` (600s), `KEEP_CLUSTER=1` to
 leave the container running. To register the test with ctest, configure with
 `-DPINOT_ODBC_DOCKER_TESTS=ON` (labeled `docker`, 15 min timeout).

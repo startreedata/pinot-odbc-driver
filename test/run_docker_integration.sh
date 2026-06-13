@@ -18,7 +18,7 @@
 #   test/run_docker_integration.sh [path-to-live_integration_tests]
 #
 # Environment overrides:
-#   PINOT_IMAGE      docker image       (default apachepinot/pinot:1.3.0)
+#   PINOT_IMAGE      docker image       (default apachepinot/pinot:1.5.0)
 #   CONTAINER_NAME   container name     (default pinot-odbc-quickstart)
 #   BROKER_PORT      host broker port   (default 8000)
 #   CONTROLLER_PORT  host controller port (default 9000)
@@ -30,7 +30,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEST_BIN="${1:-${SCRIPT_DIR}/../build/live_integration_tests}"
 
-PINOT_IMAGE="${PINOT_IMAGE:-apachepinot/pinot:1.3.0}"
+PINOT_IMAGE="${PINOT_IMAGE:-apachepinot/pinot:1.5.0}"
 CONTAINER_NAME="${CONTAINER_NAME:-pinot-odbc-quickstart}"
 BROKER_PORT="${BROKER_PORT:-8000}"
 CONTROLLER_PORT="${CONTROLLER_PORT:-9000}"
