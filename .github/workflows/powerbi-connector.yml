@@ -36,23 +36,22 @@ jobs:
       - name: Build .mez
         run: dotnet msbuild powerbi-connector/PinotODBC.proj -t:BuildMez
 
-      # Compile-validate the M with the official Power Query SDK tools so
-      # connector syntax/type errors fail the build.
-      - name: Compile-validate (Power Query SDK)
+      # Compile-validate the M with the Power Query SDK's PQTest tool (the same
+      # tool the VS Code SDK uses), so connector syntax/type errors fail the
+      # build. PQTest.exe — not MakePQX.exe, which has assembly-load issues when
+      # run standalone — compiles the connector and the test query without
+      # contacting a cluster.
+      - name: Compile-validate (Power Query SDK / PQTest)
         shell: pwsh
         run: |
           nuget install Microsoft.PowerQuery.SdkTools -OutputDirectory "$env:RUNNER_TEMP\pqsdk" -ExcludeVersion
-          $makepqx = Get-ChildItem -Path "$env:RUNNER_TEMP\pqsdk" -Recurse -Filter MakePQX.exe |
+          $pqtest = Get-ChildItem -Path "$env:RUNNER_TEMP\pqsdk" -Recurse -Filter PQTest.exe |
             Select-Object -First 1
-          if (-not $makepqx) { throw "MakePQX.exe not found in the SdkTools package" }
-          Write-Host "Using $($makepqx.FullName)"
-          Push-Location powerbi-connector
-          & $makepqx.FullName compile
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "::group::MakePQX help"; & $makepqx.FullName --help; & $makepqx.FullName compile --help; Write-Host "::endgroup::"
-            throw "MakePQX compile failed with exit code $LASTEXITCODE"
-          }
-          Pop-Location
+          if (-not $pqtest) { throw "PQTest.exe not found in the SdkTools package" }
+          Write-Host "Using $($pqtest.FullName)"
+          $mez = "powerbi-connector\bin\AnyCPU\Debug\PinotODBC.mez"
+          & $pqtest.FullName compile --extension $mez --queryFile powerbi-connector\PinotODBC.query.pq
+          if ($LASTEXITCODE -ne 0) { throw "PQTest compile failed with exit code $LASTEXITCODE" }
 
       - name: Upload .mez
         if: always()
