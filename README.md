@@ -107,7 +107,8 @@ Register the driver (elevated PowerShell), then connect from any ODBC app
 .\examples\install_windows.ps1 -DriverPath C:\path\to\pinot_odbc.dll
 # Connection string:
 #   DRIVER={StarTree Pinot ODBC Driver};HOST=broker;PORT=8099;CONTROLLER=controller:9000
-# DSNs can be created in the ODBC Data Source Administrator (odbcad32.exe).
+# Create a DSN with examples\create_dsn_windows.ps1 (the driver has no GUI
+# setup dialog). Power BI users: see docs/powerbi.md for a full walkthrough.
 ```
 
 CI builds the DLL on every PR and uploads it as the `pinot_odbc-windows-x64`
@@ -220,6 +221,21 @@ for row in cur.fetchall():
 print([t.table_name for t in cur.tables()])           # catalog
 print([c.column_name for c in cur.columns("airlineStats")])
 ```
+
+### Power BI
+
+Power BI Desktop connects through its built-in ODBC connector (Import mode).
+Install the driver from the Windows release zip, create a DSN with
+[examples/create_dsn_windows.ps1](examples/create_dsn_windows.ps1), then
+**Get Data → ODBC**:
+
+```powershell
+.\install_windows.ps1 -DriverPath C:\pinot-odbc\pinot_odbc.dll   # elevated
+.\create_dsn_windows.ps1 -DsnName Pinot -BrokerHost broker -BrokerPort 8099 -Controller controller:9000
+```
+
+See the full walkthrough — authentication, large-table tips, gateway refresh,
+and troubleshooting — in **[docs/powerbi.md](docs/powerbi.md)**.
 
 See [examples/](examples/) for sample config files and a runnable script.
 
