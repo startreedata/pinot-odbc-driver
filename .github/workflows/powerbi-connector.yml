@@ -9,13 +9,18 @@
 # WARRANTIES OF ANY KIND, either express or implied. See the License for the
 # specific language governing permissions and limitations under the License.
 
-# Builds and compile-validates the Power BI custom connector (.mez).
+# Builds the Power BI custom connector (.mez) and runs it end-to-end on a
+# Windows runner: the connector evaluates through Microsoft's Power Query
+# engine -> the Pinot ODBC driver -> an in-process mock Pinot broker, with no
+# external cluster. This compiles AND executes the connector's M.
 name: Power BI connector
 
 on:
   pull_request:
     paths:
       - 'powerbi-connector/**'
+      - 'src/**'
+      - 'CMakeLists.txt'
       - '.github/workflows/powerbi-connector.yml'
   push:
     branches: [main]
@@ -25,38 +30,97 @@ on:
 
 jobs:
   build:
-    name: Build & validate .mez
-    runs-on: windows-latest
-    timeout-minutes: 20
+    name: Build .mez
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
-
       # The .mez is a ZIP of the .pq + .pqm + icons; MSBuild's ZipDirectory
       # builds it cross-platform with no SDK dependency.
       - name: Build .mez
         run: dotnet msbuild powerbi-connector/PinotODBC.proj -t:BuildMez
-
-      # Compile-validate the M with the Power Query SDK's PQTest tool (the same
-      # tool the VS Code SDK uses), so connector syntax/type errors fail the
-      # build. PQTest.exe — not MakePQX.exe, which has assembly-load issues when
-      # run standalone — compiles the connector and the test query without
-      # contacting a cluster.
-      - name: Compile-validate (Power Query SDK / PQTest)
-        shell: pwsh
-        run: |
-          nuget install Microsoft.PowerQuery.SdkTools -OutputDirectory "$env:RUNNER_TEMP\pqsdk" -ExcludeVersion
-          $pqtest = Get-ChildItem -Path "$env:RUNNER_TEMP\pqsdk" -Recurse -Filter PQTest.exe |
-            Select-Object -First 1
-          if (-not $pqtest) { throw "PQTest.exe not found in the SdkTools package" }
-          Write-Host "Using $($pqtest.FullName)"
-          $mez = "powerbi-connector\bin\AnyCPU\Debug\PinotODBC.mez"
-          & $pqtest.FullName compile --extension $mez --queryFile powerbi-connector\PinotODBC.query.pq
-          if ($LASTEXITCODE -ne 0) { throw "PQTest compile failed with exit code $LASTEXITCODE" }
-
-      - name: Upload .mez
-        if: always()
-        uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v7
         with:
           name: powerbi-connector-mez
           path: powerbi-connector/bin/AnyCPU/Debug/PinotODBC.mez
-          if-no-files-found: warn
+
+  e2e:
+    name: End-to-end (connector → driver → mock broker)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+
+      # Build the ODBC driver DLL and the in-process mock Pinot broker.
+      - name: Build driver + mock broker
+        run: |
+          cmake -S . -B build `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows-static-md
+          cmake --build build --config Release --target pinot_odbc mock_pinot_server
+
+      - name: Register the ODBC driver
+        shell: pwsh
+        run: |
+          $dll = (Resolve-Path build/Release/pinot_odbc.dll).Path
+          ./examples/install_windows.ps1 -DriverPath $dll
+          Get-OdbcDriver -Name "StarTree Pinot ODBC Driver"
+
+      - name: Build the connector .mez
+        run: dotnet msbuild powerbi-connector/PinotODBC.proj -t:BuildMez
+
+      - name: Run end-to-end test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          # Start the mock broker/controller; it prints its ephemeral port.
+          $portFile = "$env:RUNNER_TEMP\mockport.txt"
+          $proc = Start-Process -FilePath build/Release/mock_pinot_server.exe `
+            -RedirectStandardOutput $portFile -PassThru
+          $port = $null
+          foreach ($i in 1..50) {
+            Start-Sleep -Milliseconds 200
+            if (Test-Path $portFile) {
+              $line = (Get-Content $portFile -ErrorAction SilentlyContinue | Select-Object -First 1)
+              if ($line) { $port = $line.Trim() }
+            }
+            if ($port) { break }
+          }
+          if (-not $port) { throw "mock broker did not report a port" }
+          Write-Host "Mock Pinot broker/controller on port $port"
+
+          # Query file: drive the connector at the mock, count testTable rows.
+          # Built line-by-line (PowerShell here-strings can't be indented in YAML).
+          $query = @(
+            'let',
+            "    db = PinotODBC.Database(""127.0.0.1"", $port, [Controller = ""127.0.0.1:$port""]),",
+            '    t = db{[Name = "testTable"]}[Data]',
+            'in',
+            '    Table.RowCount(t)'
+          ) -join "`n"
+          $queryFile = "$env:RUNNER_TEMP\e2e.query.pq"
+          Set-Content -Path $queryFile -Value $query -Encoding UTF8
+          Write-Host "::group::query file"; Write-Host $query; Write-Host "::endgroup::"
+
+          # Power Query SDK test tool.
+          nuget install Microsoft.PowerQuery.SdkTools -OutputDirectory "$env:RUNNER_TEMP\pqsdk" -ExcludeVersion
+          $pqtest = (Get-ChildItem -Path "$env:RUNNER_TEMP\pqsdk" -Recurse -Filter PQTest.exe | Select-Object -First 1).FullName
+          if (-not $pqtest) { throw "PQTest.exe not found" }
+          $mez = (Resolve-Path "powerbi-connector\bin\AnyCPU\Debug\PinotODBC.mez").Path
+          Write-Host "PQTest: $pqtest"
+
+          # Anonymous credential for this connector + query.
+          $tmpl = & $pqtest credential-template --prettyPrint --extension $mez --queryFile $queryFile 2>&1 | Out-String
+          Write-Host "::group::credential-template"; Write-Host $tmpl; Write-Host "::endgroup::"
+          $tmpl | & $pqtest set-credential --prettyPrint --extension $mez --queryFile $queryFile 2>&1 | Out-String | Write-Host
+
+          # Execute the connector end-to-end and assert it returns 3 rows.
+          $out = & $pqtest run-test --prettyPrint --extension $mez --queryFile $queryFile 2>&1 | Out-String
+          Write-Host "::group::run-test output"; Write-Host $out; Write-Host "::endgroup::"
+          Stop-Process -Id $proc.Id -ErrorAction SilentlyContinue
+
+          if ($out -notmatch '"Output"\s*:\s*3' -and $out -notmatch '(?m)^\s*3\s*$') {
+            throw "Expected testTable row count 3 from the connector; got output above."
+          }
+          Write-Host "End-to-end connector test passed: testTable returned 3 rows."
