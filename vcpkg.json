@@ -1,6 +1,6 @@
 {
   "name": "pinot-odbc-driver",
-  "version-string": "0.1.0",
+  "version-string": "1.0.0",
   "description": "ODBC driver for Apache Pinot",
   "dependencies": [
     "curl"

@@ -176,7 +176,7 @@ SQLRETURN SQL_API SQLGetInfo(SQLHDBC ConnectionHandle, SQLUSMALLINT InfoType,
   switch (InfoType) {
     // ---- identification ----
     case SQL_DRIVER_NAME: return str("libpinot_odbc");
-    case SQL_DRIVER_VER: return str("00.01.0000");
+    case SQL_DRIVER_VER: return str("01.00.0000");
     case SQL_DRIVER_ODBC_VER: return str("03.51");
     case SQL_DBMS_NAME: return str("Apache Pinot");
     case SQL_DBMS_VER: return str("01.00.0000");
