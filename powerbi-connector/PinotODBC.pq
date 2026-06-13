@@ -93,25 +93,31 @@ shared PinotODBC.Database = (host as text, port as number, optional options as r
         ),
         ValidatedOptions = ValidateOptions(options, ValidOptionsMap),
         //
-        // Connection string. Keys map to the Pinot ODBC driver's options;
-        // null fields are stripped before use.
+        // Connection string, built as explicit "KEY=value;..." text. Required
+        // keys (Driver/Host/Port) are always present; optional keys are added
+        // only when set.
         //
-        ConnectionString = [
-            Driver = Config_DriverName,
-            Host = host,
-            Port = Text.From(port),
-            Scheme = ValidatedOptions[Scheme]?,
-            Controller = ValidatedOptions[Controller]?,
-            Database = ValidatedOptions[Database]?,
-            UseMultistage = if ValidatedOptions[UseMultistage]? = true then "1" else null,
-            Timeout =
+        ConnectionString = Text.Combine(
+            List.Combine({
+                {
+                    "Driver={" & Config_DriverName & "}",
+                    "Host=" & host,
+                    "Port=" & Text.From(port)
+                },
+                if ValidatedOptions[Scheme]? <> null then {"Scheme=" & ValidatedOptions[Scheme]} else {},
+                if ValidatedOptions[Controller]? <> null then {"Controller=" & ValidatedOptions[Controller]} else {},
+                if ValidatedOptions[Database]? <> null then {"Database=" & ValidatedOptions[Database]} else {},
+                if ValidatedOptions[UseMultistage]? = true then {"UseMultistage=1"} else {},
                 if ValidatedOptions[ConnectionTimeout]? <> null then
-                    Text.From(ValidatedOptions[ConnectionTimeout]?)
+                    {"Timeout=" & Text.From(ValidatedOptions[ConnectionTimeout])}
                 else
-                    null
-        ],
+                    {}
+            }),
+            ";"
+        ),
         //
         // Credentials are set separately from the persisted connection string.
+        // Anonymous adds nothing (the driver talks to the cluster without auth).
         //
         Credential = Extension.CurrentCredential(),
         CredentialConnectionString =
@@ -121,8 +127,6 @@ shared PinotODBC.Database = (host as text, port as number, optional options as r
                 // Bearer token -> the driver prepends "Bearer " automatically.
                 [Token = Credential[Key]]
             else
-                // Anonymous (or no bound credential during analysis): the driver
-                // talks to the cluster without auth, so add nothing.
                 [],
         //
         // Capabilities derived from the configuration variables above.
@@ -131,24 +135,24 @@ shared PinotODBC.Database = (host as text, port as number, optional options as r
         SqlCapabilities = defaultConfig[SqlCapabilities],
         SQLGetFunctions = defaultConfig[SQLGetFunctions],
         SQLGetInfo = defaultConfig[SQLGetInfo],
-        ConnectionStringNoNulls = Record.SelectFields(
-            ConnectionString,
-            Table.SelectRows(Record.ToTable(ConnectionString), each [Value] <> null)[Name]
-        ),
-        OdbcDatasource = Odbc.DataSource(
-            ConnectionStringNoNulls,
-            [
-                // Pinot has a flat table namespace (no schemas/catalogs).
-                HierarchicalNavigation = false,
-                SoftNumbers = true,
-                TolerateConcatOverflow = true,
-                ClientConnectionPooling = true,
-                CredentialConnectionString = CredentialConnectionString,
-                SqlCapabilities = SqlCapabilities,
-                SQLGetFunctions = SQLGetFunctions,
-                SQLGetInfo = SQLGetInfo
-            ]
-        )
+        // Base options; only attach CredentialConnectionString when it has
+        // properties (an empty one is rejected as "no properties defined").
+        BaseOptions = [
+            // Pinot has a flat table namespace (no schemas/catalogs).
+            HierarchicalNavigation = false,
+            SoftNumbers = true,
+            TolerateConcatOverflow = true,
+            ClientConnectionPooling = true,
+            SqlCapabilities = SqlCapabilities,
+            SQLGetFunctions = SQLGetFunctions,
+            SQLGetInfo = SQLGetInfo
+        ],
+        OdbcOptions =
+            if Record.FieldCount(CredentialConnectionString) > 0 then
+                BaseOptions & [CredentialConnectionString = CredentialConnectionString]
+            else
+                BaseOptions,
+        OdbcDatasource = Odbc.DataSource(ConnectionString, OdbcOptions)
     in
         OdbcDatasource;
 

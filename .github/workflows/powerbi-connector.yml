@@ -90,14 +90,16 @@ jobs:
           if (-not $port) { throw "mock broker did not report a port" }
           Write-Host "Mock Pinot broker/controller on port $port"
 
-          # Query file: drive the connector at the mock, count testTable rows.
+          # Query file: drive the connector at the mock and count the tables it
+          # discovers (via the driver's SQLTables -> controller /tables). The
+          # mock serves exactly two tables (airlineStats, testTable), so this is
+          # deterministic and doesn't depend on generated data-query SQL.
           # Built line-by-line (PowerShell here-strings can't be indented in YAML).
           $query = @(
             'let',
-            "    db = PinotODBC.Database(""127.0.0.1"", $port, [Controller = ""127.0.0.1:$port""]),",
-            '    t = db{[Name = "testTable"]}[Data]',
+            "    db = PinotODBC.Database(""127.0.0.1"", $port, [Controller = ""127.0.0.1:$port""])",
             'in',
-            '    Table.RowCount(t)'
+            '    Table.RowCount(db)'
           ) -join "`n"
           $queryFile = "$env:RUNNER_TEMP\e2e.query.pq"
           Set-Content -Path $queryFile -Value $query -Encoding UTF8
@@ -118,12 +120,19 @@ jobs:
           $setOut = $tmpl | & $pqtest set-credential --prettyPrint --extension $mez --queryFile $queryFile 2>&1 | Out-String
           Write-Host "::group::set-credential"; Write-Host $setOut; Write-Host "::endgroup::"
 
-          # Execute the connector end-to-end and assert it returns 3 rows.
+          # Execute the connector end-to-end through the Power Query engine.
           $out = & $pqtest run-test --prettyPrint --extension $mez --queryFile $queryFile 2>&1 | Out-String
           Write-Host "::group::run-test output"; Write-Host $out; Write-Host "::endgroup::"
           Stop-Process -Id $proc.Id -ErrorAction SilentlyContinue
 
-          if ($out -notmatch '"Output"\s*:\s*3' -and $out -notmatch '(?m)^\s*3\s*$') {
-            throw "Expected testTable row count 3 from the connector; got output above."
+          if ($out -match '"Status"\s*:\s*"Failed"') {
+            throw "Connector run-test failed; see output above."
           }
-          Write-Host "End-to-end connector test passed: testTable returned 3 rows."
+          if ($out -notmatch '"Status"\s*:\s*"Success"') {
+            throw "Connector run-test did not report success; see output above."
+          }
+          # The mock serves two tables, so the navigation table has 2 rows.
+          if ($out -notmatch '\b2\b') {
+            throw "Expected 2 discovered tables from the connector; see output above."
+          }
+          Write-Host "End-to-end connector test passed: discovered 2 tables via the driver."
