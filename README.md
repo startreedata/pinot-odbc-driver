@@ -60,6 +60,9 @@ and as epoch milliseconds.
 | [Excel](docs/excel.md) | Get Data → From ODBC, refreshable workbook tables |
 | [Tableau](docs/tableau.md) | Other Databases (ODBC), live vs. extract, Custom SQL |
 | [Python](docs/python.md) | pyodbc, parameterized queries, catalog APIs, pandas DataFrames |
+| [Node.js](docs/nodejs.md) | `odbc` npm package, promise API, pooling |
+| [.NET / C#](docs/dotnet.md) | `System.Data.Odbc`, ADO.NET schema collections, type mapping |
+| [R](docs/r.md) | DBI + `odbc` package, data.frames, dplyr caveats |
 | [StarTree Cloud](docs/startree-cloud.md) | HTTPS + token connection strings and DSNs |
 
 ## Releases
