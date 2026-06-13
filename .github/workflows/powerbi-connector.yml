@@ -128,11 +128,11 @@ jobs:
           if ($out -match '"Status"\s*:\s*"Failed"') {
             throw "Connector run-test failed; see output above."
           }
-          if ($out -notmatch '"Status"\s*:\s*"Success"') {
-            throw "Connector run-test did not report success; see output above."
+          if ($out -notmatch '"Status"\s*:\s*"Passed"') {
+            throw "Connector run-test did not report Passed; see output above."
           }
           # The mock serves two tables, so the navigation table has 2 rows.
-          if ($out -notmatch '\b2\b') {
+          if ($out -notmatch '"Value"\s*:\s*2\b') {
             throw "Expected 2 discovered tables from the connector; see output above."
           }
           Write-Host "End-to-end connector test passed: discovered 2 tables via the driver."
