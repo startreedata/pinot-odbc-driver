@@ -62,10 +62,14 @@ docker run -d --name "${CONTAINER_NAME}" \
 
 echo -n "Waiting for baseballStats to become queryable"
 deadline=$(( $(date +%s) + READY_TIMEOUT ))
+# The quickstart creates the table before its segments finish loading, during
+# which count(*) answers a well-formed, error-free {"rows":[[0]]}. Gating only
+# on response shape would let the tests run against an empty table, so require a
+# positive count (first digit non-zero) to confirm the data is actually loaded.
 until response=$(curl -s -m 5 -X POST -H 'Content-Type: application/json' \
         -d '{"sql":"SELECT count(*) FROM baseballStats"}' \
         "http://localhost:${BROKER_PORT}/query/sql" 2>/dev/null) \
-      && echo "$response" | grep -q '"rows":\[\[' \
+      && echo "$response" | grep -qE '"rows":\[\[[1-9]' \
       && ! echo "$response" | grep -q '"errorCode"'; do
   if (( $(date +%s) > deadline )); then
     echo
