@@ -36,11 +36,14 @@ Get-OdbcDriver -Name "StarTree Pinot ODBC Driver"
 
 ## 2. Create a DSN (recommended)
 
-A DSN keeps the connection details out of your reports. The driver does not
-ship a GUI configuration dialog, so create the DSN with the helper script
-(no admin rights needed — it creates a per-user DSN):
+A DSN keeps the connection details out of your reports. Download
+[`create_dsn_windows.ps1`](../examples/create_dsn_windows.ps1) from this
+repository and save it in `C:\pinot-odbc`. The helper is separate from the
+driver ZIP. Run it from a regular PowerShell prompt as the Windows user who
+runs Power BI, so the per-user DSN appears in Power BI Desktop.
 
 ```powershell
+cd C:\pinot-odbc
 .\create_dsn_windows.ps1 -DsnName Pinot -BrokerHost broker.example.com -BrokerPort 8099 `
     -Controller controller.example.com:9000
 ```
